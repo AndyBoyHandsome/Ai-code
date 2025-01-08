@@ -20,6 +20,10 @@ export const useGroupStore = defineStore('group', () => {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
+      console.log('***************')
+      console.log('recevice groupData:', groupData) // 打印创建的分组
+      console.log('Creating group:', newGroup) // 打印创建的分组
+      console.log('***************')
       const createdGroup = await apiStore.createGroup(newGroup)
       groups.value.push(createdGroup)
       return createdGroup
@@ -110,20 +114,28 @@ export const useGroupStore = defineStore('group', () => {
   const createGroupsFromResults = async (groupingResults) => {
     try {
       loading.value = true
+      console.log('Creating groups from results:', groupingResults)
 
-      // 获取所有唯一的分组名称
-      const uniqueGroupNames = [...new Set(groupingResults.map((r) => r.groupName))]
+      // 清空现有分组
+      clearGroups()
 
-      // 为每个唯一的分组名称创建一个分组
-      const groupsToCreate = uniqueGroupNames.map((name) => ({
-        name,
-        description: `自动创建的分组: ${name}`,
-        autoSort: true,
+      // 直接使用后端返回的分组结果创建分组
+      const newGroups = groupingResults.map((result) => ({
+        id: result.group_id,
+        name: result.name,
+        description: `自动创建的分组 ${result.name}`,
+        image_ids: result.image_ids,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       }))
 
-      // 创建分组
-      await createGroups(groupsToCreate)
+      // 添加新分组
+      groups.value = newGroups
+      console.log('Created groups:', groups.value)
+
+      return groups.value
     } catch (error) {
+      console.error('Error creating groups:', error)
       error.value = error.message
       throw error
     } finally {

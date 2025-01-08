@@ -11,12 +11,13 @@
         <div class="option-section">
           <h3>选择分组</h3>
           <div class="group-list">
+            <label class="group-item select-all">
+              <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" />
+              <span class="group-name">全选</span>
+              <span class="group-count">({{ groups.length }}个分组)</span>
+            </label>
             <label v-for="group in groups" :key="group.id" class="group-item">
-              <input 
-                type="checkbox" 
-                v-model="selectedGroups" 
-                :value="group.id"
-              >
+              <input type="checkbox" v-model="selectedGroups" :value="group.id" />
               <span class="group-name">{{ group.name }}</span>
               <span class="group-count">({{ group.images.length }}张)</span>
             </label>
@@ -89,15 +90,15 @@
         <div class="preview-header">
           <h3>导出内容预览</h3>
           <div class="preview-controls">
-            <button 
-              class="btn-icon" 
+            <button
+              class="btn-icon"
               :class="{ active: previewMode === 'grid' }"
               @click="previewMode = 'grid'"
             >
               <i class="fas fa-th"></i>
             </button>
-            <button 
-              class="btn-icon" 
+            <button
+              class="btn-icon"
               :class="{ active: previewMode === 'list' }"
               @click="previewMode = 'list'"
             >
@@ -107,22 +108,14 @@
         </div>
 
         <div class="preview-content" :class="previewMode">
-          <div 
-            v-for="group in selectedGroupsData" 
-            :key="group.id" 
-            class="preview-group"
-          >
+          <div v-for="group in selectedGroupsData" :key="group.id" class="preview-group">
             <div class="group-header">
               <h4>{{ group.name }}</h4>
               <span class="count">{{ group.images.length }}张</span>
             </div>
             <div class="group-images">
-              <div 
-                v-for="image in group.images" 
-                :key="image.id"
-                class="preview-image"
-              >
-                <img :src="image.url" :alt="image.name">
+              <div v-for="image in group.images" :key="image.id" class="preview-image">
+                <img :src="image.url" :alt="image.name" />
                 <div class="image-info">
                   <span class="image-name">{{ getExportName(image) }}</span>
                   <span class="image-size">{{ formatSize(image.size) }}</span>
@@ -135,14 +128,7 @@
     </div>
 
     <!-- Toast 提示 -->
-    <div 
-      v-if="toast.show" 
-      class="toast"
-      :class="[
-        toast.show && 'show',
-        `toast-${toast.type}`
-      ]"
-    >
+    <div v-if="toast.show" class="toast" :class="[toast.show && 'show', `toast-${toast.type}`]">
       {{ toast.message }}
     </div>
   </div>
@@ -197,15 +183,15 @@ const imageStore = useImageStore()
 const apiStore = useApiStore()
 
 const groups = computed<Group[]>(() => {
-  return groupStore.groups.map(group => ({
+  return groupStore.groups.map((group) => ({
     ...group,
-    images: imageStore.getImagesByGroupId(group.id)
+    images: imageStore.getImagesByGroupId(group.id),
   }))
 })
 
 // 计算属性
 const selectedGroupsData = computed(() => {
-  return groups.value.filter(group => selectedGroups.value.includes(group.id))
+  return groups.value.filter((group) => selectedGroups.value.includes(group.id))
 })
 
 const totalImages = computed(() => {
@@ -254,16 +240,18 @@ const selectExportDirectory = async () => {
       return
     }
 
-    const handle = await window.showDirectoryPicker({
-      mode: 'readwrite',
-      startIn: 'downloads'
-    }).catch(error => {
-      if (error.name === 'AbortError') {
-        // 用户取消了选择
-        return null
-      }
-      throw error
-    })
+    const handle = await window
+      .showDirectoryPicker({
+        mode: 'readwrite',
+        startIn: 'downloads',
+      })
+      .catch((error) => {
+        if (error.name === 'AbortError') {
+          // 用户取消了选择
+          return null
+        }
+        throw error
+      })
 
     if (!handle) return
 
@@ -286,7 +274,7 @@ const selectExportDirectory = async () => {
   } catch (error) {
     console.error('选择导出文件夹失败:', error)
     if (error.name === 'SecurityError') {
-      showToast('没有权限访问文��系统，请检查浏览器设置', 'error')
+      showToast('没有权限访问文件系统，请检查浏览器设置', 'error')
     } else {
       showToast('选择导出文件夹失败：' + error.message, 'error')
     }
@@ -313,9 +301,10 @@ const startExport = async () => {
     const exportDir = exportPath.value
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
     const dirName = `exported-images-${timestamp}`
-    
-    const newDir = await exportDir.getDirectoryHandle(dirName, { create: true })
-      .catch(async error => {
+
+    const newDir = await exportDir
+      .getDirectoryHandle(dirName, { create: true })
+      .catch(async (error) => {
         if (error.name === 'TypeMismatchError') {
           // 目录已存在，尝试使用新名称
           return await exportDir.getDirectoryHandle(`${dirName}-${Date.now()}`, { create: true })
@@ -334,49 +323,51 @@ const startExport = async () => {
     }
 
     for (const chunk of chunks) {
-      await Promise.all(chunk.map(async (groupId) => {
-        const group = groupStore.getGroupById(groupId)
-        if (!group) return
+      await Promise.all(
+        chunk.map(async (groupId) => {
+          const group = groupStore.getGroupById(groupId)
+          if (!group) return
 
-        const images = imageStore.getImagesByGroupId(groupId)
-        if (!images.length) return
+          const images = imageStore.getImagesByGroupId(groupId)
+          if (!images.length) return
 
-        try {
-          // 创建导出目录
-          const groupDir = await newDir.getDirectoryHandle(group.name, { create: true })
+          try {
+            // 创建导出目录
+            const groupDir = await newDir.getDirectoryHandle(group.name, { create: true })
 
-          // 导出图片
-          for (const image of images) {
-            try {
-              // 获取图片数据
-              const response = await fetch(image.url)
-              if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-              const blob = await response.blob()
+            // 导出图片
+            for (const image of images) {
+              try {
+                // 获取图片数据
+                const response = await fetch(image.url)
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+                const blob = await response.blob()
 
-              // 创建文件
-              const fileHandle = await groupDir.getFileHandle(image.name, { create: true })
-              const writable = await fileHandle.createWritable()
-              await writable.write(blob)
-              await writable.close()
+                // 创建文件
+                const fileHandle = await groupDir.getFileHandle(image.name, { create: true })
+                const writable = await fileHandle.createWritable()
+                await writable.write(blob)
+                await writable.close()
 
-              processed++
-              exportProgress.value = Math.round((processed / total) * 100)
-            } catch (error) {
-              console.error(`导出图片 ${image.name} 失败:`, error)
-              failedExports.value.push({
-                name: image.name,
-                error: error.message
-              })
+                processed++
+                exportProgress.value = Math.round((processed / total) * 100)
+              } catch (error) {
+                console.error(`导出图片 ${image.name} 失败:`, error)
+                failedExports.value.push({
+                  name: image.name,
+                  error: error.message,
+                })
+              }
             }
+          } catch (error) {
+            console.error(`导出分组 ${group.name} 失败:`, error)
+            failedExports.value.push({
+              name: group.name,
+              error: error.message,
+            })
           }
-        } catch (error) {
-          console.error(`导出分组 ${group.name} 失败:`, error)
-          failedExports.value.push({
-            name: group.name,
-            error: error.message
-          })
-        }
-      }))
+        }),
+      )
     }
 
     if (failedExports.value.length) {
@@ -401,14 +392,14 @@ const startExport = async () => {
 const toast = ref<Toast>({
   show: false,
   message: '',
-  type: 'info'
+  type: 'info',
 })
 
 const showToast = (message: string, type: Toast['type'] = 'success') => {
   toast.value = {
     show: true,
     message,
-    type
+    type,
   }
   setTimeout(() => {
     toast.value.show = false
@@ -419,33 +410,49 @@ const showToast = (message: string, type: Toast['type'] = 'success') => {
 declare global {
   interface Window {
     showDirectoryPicker(options?: {
-      mode?: 'read' | 'readwrite';
-      startIn?: 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos';
-    }): Promise<FileSystemDirectoryHandle>;
+      mode?: 'read' | 'readwrite'
+      startIn?: 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos'
+    }): Promise<FileSystemDirectoryHandle>
   }
 }
 
 interface FileSystemDirectoryHandle {
-  kind: 'directory';
-  name: string;
-  queryPermission(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
-  requestPermission(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
-  getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FileSystemDirectoryHandle>;
-  getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle>;
-  values(): AsyncIterableIterator<FileSystemHandle>;
+  kind: 'directory'
+  name: string
+  queryPermission(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
+  requestPermission(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
+  getDirectoryHandle(
+    name: string,
+    options?: { create?: boolean },
+  ): Promise<FileSystemDirectoryHandle>
+  getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle>
+  values(): AsyncIterableIterator<FileSystemHandle>
 }
 
 interface FileSystemFileHandle {
-  kind: 'file';
-  name: string;
-  getFile(): Promise<File>;
-  createWritable(): Promise<FileSystemWritableFileStream>;
+  kind: 'file'
+  name: string
+  getFile(): Promise<File>
+  createWritable(): Promise<FileSystemWritableFileStream>
 }
 
 interface FileSystemWritableFileStream extends WritableStream {
-  write(data: BufferSource | Blob | string): Promise<void>;
-  seek(position: number): Promise<void>;
-  truncate(size: number): Promise<void>;
+  write(data: BufferSource | Blob | string): Promise<void>
+  seek(position: number): Promise<void>
+  truncate(size: number): Promise<void>
+}
+
+// 添加全选功能
+const isAllSelected = computed(() => {
+  return selectedGroups.value.length === groups.value.length
+})
+
+const toggleSelectAll = () => {
+  if (isAllSelected.value) {
+    selectedGroups.value = []
+  } else {
+    selectedGroups.value = groups.value.map((group) => group.id)
+  }
 }
 </script>
 
@@ -490,12 +497,24 @@ interface FileSystemWritableFileStream extends WritableStream {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: var(--border-radius);
   cursor: pointer;
+  transition: var(--transition);
+}
+
+.group-item:hover {
+  background: var(--background-color);
+}
+
+.group-name {
+  flex: 1;
+  font-weight: 500;
 }
 
 .group-count {
-  font-size: 0.85rem;
   color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 .export-options {
@@ -672,4 +691,49 @@ interface FileSystemWritableFileStream extends WritableStream {
   background: var(--warning-color);
   color: white;
 }
-</style> 
+
+.select-all {
+  padding: 0.75rem;
+  background: rgba(0, 168, 255, 0.1);
+  border-radius: var(--border-radius);
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.select-all:hover {
+  background: rgba(0, 168, 255, 0.15);
+}
+
+input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 2px solid var(--primary-color);
+  appearance: none;
+  cursor: pointer;
+  position: relative;
+  transition: var(--transition);
+}
+
+input[type='checkbox']:checked {
+  background-color: var(--primary-color);
+}
+
+input[type='checkbox']:checked::after {
+  content: '✓';
+  color: white;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+}
+
+input[type='checkbox']:hover {
+  border-color: var(--accent-color);
+}
+
+input[type='checkbox']:checked:hover {
+  background-color: var(--accent-color);
+}
+</style>

@@ -3,6 +3,7 @@ from typing import List
 from app.services.image_service import ImageService
 from app.models.schemas import GroupResult, ImageGroup, GroupRequest
 import os
+import shutil
 
 router = APIRouter()
 
@@ -13,6 +14,30 @@ if not os.path.exists(UPLOAD_DIR):
 
 # 初始化 ImageService
 image_service = ImageService(upload_dir=UPLOAD_DIR)
+
+@router.post("/clear-cache")
+async def clear_cache():
+    """清除缓存和上传的图片"""
+    try:
+        # 清除上传目录中的所有文件
+        uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+        if os.path.exists(uploads_dir):
+            for filename in os.listdir(uploads_dir):
+                file_path = os.path.join(uploads_dir, filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    print(f"Error deleting {file_path}: {e}")
+
+        # 重置 ImageService 的状态
+        image_service.reset()
+
+        return {"message": "缓存已清除"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/images/upload", response_model=List[str])
 async def upload_images(files: List[UploadFile] = File(...)):
@@ -56,6 +81,7 @@ async def group_images(request: GroupRequest):
             request.image_ids,
             request.similarity_threshold
         )
+        print(f"Grouping result: {groups}")
         return groups
     except Exception as e:
         print(f"Error during grouping: {str(e)}")

@@ -4,7 +4,6 @@ python-multipart==0.0.5
 numpy>=1.21.0
 opencv-python>=4.5.3
 Pillow>=8.3.1
-ultralytics>=8.0.0  # YOLOv8
 torch>=1.9.0
 torchvision>=0.10.0
 python-jose[cryptography]>=3.3.0
@@ -12,4 +11,8 @@ passlib[bcrypt]>=1.7.4
 python-dotenv>=0.19.0
 aiofiles>=0.7.0
 scikit-learn>=0.24.2
-scipy>=1.7.1 
+scipy>=1.7.1
+insightface>=0.7.3  # RetinaFace 和 ArcFace
+faiss-cpu  # 特征向量索引
+onnxruntime  # ONNX 运行时
+tqdm  # 进度条 

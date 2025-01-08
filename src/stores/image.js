@@ -11,7 +11,7 @@ export const useImageStore = defineStore('image', () => {
     try {
       loading.value = true
       const newImages = []
-      
+
       // 递归遍历文件夹
       const traverseFolder = async (handle, path = '') => {
         for await (const entry of handle.values()) {
@@ -28,7 +28,7 @@ export const useImageStore = defineStore('image', () => {
                 type: file.type,
                 path: path,
                 groupId: null,
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
               }
               newImages.push(imageData)
             }
@@ -52,7 +52,7 @@ export const useImageStore = defineStore('image', () => {
     try {
       loading.value = true
       const newImages = await Promise.all(
-        Array.from(files).map(async file => ({
+        Array.from(files).map(async (file) => ({
           id: Date.now().toString() + Math.random().toString(36).slice(2),
           name: file.name,
           url: URL.createObjectURL(file),
@@ -60,11 +60,11 @@ export const useImageStore = defineStore('image', () => {
           type: file.type,
           path: '',
           groupId: null,
-          createdAt: new Date().toISOString()
-        }))
+          createdAt: new Date().toISOString(),
+        })),
       )
       images.value = [...images.value, ...newImages]
-      console.log("-----------",newImages)
+      console.log('-----------', newImages)
       return newImages
     } catch (err) {
       error.value = err.message
@@ -83,7 +83,7 @@ export const useImageStore = defineStore('image', () => {
   const deleteImages = async (imageIds) => {
     try {
       loading.value = true
-      images.value = images.value.filter(img => !imageIds.includes(img.id))
+      images.value = images.value.filter((img) => !imageIds.includes(img.id))
     } catch (error) {
       error.value = error.message
       throw error
@@ -99,7 +99,7 @@ export const useImageStore = defineStore('image', () => {
 
   // 更新图片
   const updateImage = (imageId, updates) => {
-    const index = images.value.findIndex(img => img.id === imageId)
+    const index = images.value.findIndex((img) => img.id === imageId)
     if (index !== -1) {
       images.value[index] = { ...images.value[index], ...updates }
     }
@@ -107,40 +107,45 @@ export const useImageStore = defineStore('image', () => {
 
   // 批量更新图片
   const updateImages = (imageIds, updates) => {
-    imageIds.forEach(id => updateImage(id, updates))
+    imageIds.forEach((id) => updateImage(id, updates))
   }
 
   // 获取图片
   const getImageById = (id) => {
-    return images.value.find(img => img.id === id)
+    return images.value.find((img) => img.id === id)
   }
 
   // 获取分组图片
   const getImagesByGroupId = (groupId) => {
-    return images.value.filter(img => img.groupId === groupId)
+    return images.value.filter((img) => img.groupId === groupId)
   }
 
   // 获取未分组图片
   const getUngroupedImages = () => {
-    return images.value.filter(img => !img.groupId)
+    return images.value.filter((img) => !img.groupId)
   }
 
   // 移动图片到分组
   const moveImagesToGroup = async (imageIds, groupId) => {
     try {
       loading.value = true
+      console.log(`Moving images ${imageIds} to group ${groupId}`)
+
       // 批量更新图片的分组ID
-      imageIds.forEach(imageId => {
-        const index = images.value.findIndex(img => img.id === imageId)
+      imageIds.forEach((imageId) => {
+        const index = images.value.findIndex((img) => img.id === imageId)
         if (index !== -1) {
           images.value[index] = {
             ...images.value[index],
-            groupId,
-            updatedAt: new Date().toISOString()
+            groupId: groupId,
+            updatedAt: new Date().toISOString(),
           }
         }
       })
+
+      console.log('Updated images:', images.value)
     } catch (error) {
+      console.error('Error moving images:', error)
       error.value = error.message
       throw error
     } finally {
@@ -152,21 +157,21 @@ export const useImageStore = defineStore('image', () => {
   const autoGroupImages = async (groupingResults) => {
     try {
       loading.value = true
-      for (const result of groupingResults) {
-        const imagePath = result.imagePath
-        const groupName = result.groupName
-        
-        // 找到对应路径的图片
-        const image = images.value.find(img => img.path === imagePath)
-        if (image) {
-          // 更新图片的分组信息
-          updateImage(image.id, {
-            groupId: groupName,
-            updatedAt: new Date().toISOString()
-          })
-        }
+      console.log('Auto grouping images with results:', groupingResults)
+
+      // 清除所有图片的分组信息
+      images.value.forEach((img) => {
+        img.groupId = null
+      })
+
+      // 根据分组结果更新图片的分组ID
+      for (const group of groupingResults) {
+        await moveImagesToGroup(group.image_ids, group.group_id)
       }
+
+      console.log('Finished auto grouping images:', images.value)
     } catch (error) {
+      console.error('Error in auto grouping:', error)
       error.value = error.message
       throw error
     } finally {
@@ -189,6 +194,6 @@ export const useImageStore = defineStore('image', () => {
     getImagesByGroupId,
     getUngroupedImages,
     moveImagesToGroup,
-    autoGroupImages
+    autoGroupImages,
   }
-}) 
+})

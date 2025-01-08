@@ -165,6 +165,20 @@ export const useApiStore = defineStore('api', () => {
     }
   }
 
+  // 清除缓存
+  const clearCache = async () => {
+    try {
+      loading.value = true
+      const response = await api.post('/api/clear-cache')
+      return response
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
@@ -178,5 +192,6 @@ export const useApiStore = defineStore('api', () => {
     getGroups,
     updateGroup,
     deleteGroup,
+    clearCache,
   }
 })

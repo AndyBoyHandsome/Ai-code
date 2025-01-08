@@ -41,8 +41,8 @@ class GroupResult(BaseModel):
     group_id: str
     name: str
     image_ids: List[str]
-    similarity_score: float = Field(ge=0.0, le=1.0)
-    face_count: int = Field(ge=0)
+    # similarity_score: float = Field(ge=0.0, le=1.0)
+    # face_count: int = Field(ge=0)
 
 class GroupRequest(BaseModel):
     """分组请求模型"""

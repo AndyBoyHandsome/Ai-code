@@ -5,62 +5,47 @@ import numpy as np
 from typing import List, Dict, Any
 from PIL import Image
 from datetime import datetime
-from ultralytics import YOLO
 import torch
+import insightface
+from insightface.app import FaceAnalysis
+import faiss
 from pathlib import Path
-from fastapi import UploadFile
 import io
 import json
+from tqdm import tqdm
+from fastapi import UploadFile
+
+# Set environment variables to control threading
+os.environ['OMP_NUM_THREADS'] = '1'
+os.environ['OPENBLAS_NUM_THREADS'] = '1'
+os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['VECLIB_MAXIMUM_THREADS'] = '1'
+os.environ['NUMEXPR_NUM_THREADS'] = '1'
+os.environ['OMP_THREAD_LIMIT'] = '1'
 
 from app.models.schemas import ImageGroup
 from app.models.schemas import Image as ImageModel
 from app.models.schemas import ImageGroup, GroupResult, ImageFeatures
-
+from app.services.face_quality import FaceQualityAssessor
+from app.services.face_recognizer import FaceRecognizer
 class ImageService:
     def __init__(self, upload_dir: str):
         self.upload_dir = upload_dir
         if not os.path.exists(upload_dir):
             os.makedirs(upload_dir)
         
-        # 初始化 YOLOv8 模型
-        model_dir = os.path.join(os.path.dirname(__file__), "..", "models")
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir)
-        # try:
-        #     face_model_path = os.path.join(model_dir, "yolov8n-face.pt")
-        #     # 使用专门的人脸检测模型
-        #     self.model = YOLO("./yolov8n-face.pt")
-        #     print("人脸检测模型加载成功")
-        # except Exception as e:
-        #     print(f"Error initializing models: {str(e)}")
-        #     raise    
-        model_path = os.path.join(model_dir, "yolov8n.pt")
-        face_model_path = os.path.join(model_dir, "yolov8n-face.pt")
+        # 初始化人脸分析模型
+        self.face_analyzer = FaceAnalysis(
+            name='buffalo_l',  # 使用大模型以提高准确率
+            providers=['CUDAExecutionProvider', 'CPUExecutionProvider']
+        )
+        self.face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
+        self.quality_assessor = FaceQualityAssessor() 
+        self.recognizer = FaceRecognizer()
+        # 初始化 Faiss 索引
+        self.feature_dim = 512  # ArcFace 特征维度
+        self.index = faiss.IndexFlatIP(self.feature_dim)  # 使用内积相似度
         
-        try:
-            if not os.path.exists(model_path):
-                # 如果模型不存在，下载模型
-                self.model = YOLO("yolov8n.pt")
-                self.model.export()  # 导出模型
-                if os.path.exists("yolov8n.pt"):
-                    os.rename("yolov8n.pt", model_path)
-            else:
-                self.model = YOLO(model_path)
-            
-            # 初始化人脸检测模型
-            if not os.path.exists(face_model_path):
-                # 如果人脸模型不存在，下载并转换
-                base_model = YOLO("yolov8n.pt")
-                base_model.task = 'face'
-                base_model.export()  # 导出模型
-                if os.path.exists("yolov8n-face.pt"):
-                    os.rename("yolov8n-face.pt", face_model_path)
-                self.face_model = base_model
-            else:
-                self.face_model = YOLO(face_model_path)
-        except Exception as e:
-            print(f"Error initializing models: {str(e)}")
-            raise
         self.images: Dict[str, ImageModel] = {}
         self.groups: Dict[str, ImageGroup] = {}
         self._ensure_upload_dir()
@@ -69,128 +54,77 @@ class ImageService:
         """确保上传目录存在"""
         if not os.path.exists(self.upload_dir):
             os.makedirs(self.upload_dir)
-
-
-    def extract_features(self, image_path: str) -> np.ndarray:
-        """提取图像特征"""
-        # 读取图片
-        img = cv2.imread(image_path)
-        if img is None:
-            return None
+    
+    def detect_faces(self, image):
+        """检测图片中的人脸"""
+        if len(image.shape) == 2:
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            
+        faces = self.face_analyzer.get(image)
+        quality_faces = []
         
-        # 使用 YOLOv8 进行目标检测
-        results = self.model(img)
+        for face in faces:
+            if face.det_score > 0.5:
+                is_good, quality_score, reasons = self.quality_assessor.is_good_quality(image, face)
+                if is_good:
+                    # 将face对象转换为可序列化的字典
+                    face_dict = {
+                        'bbox': face.bbox.tolist(),
+                        'kps': face.kps.tolist(),
+                        'det_score': float(face.det_score),
+                        'features': face.embedding.tolist(),
+                        'quality_score': quality_score,
+                        # 'confidence': float(quality_score),
+                        # 'gender': face.gender,
+                        # 'age': face.age,
+                        # 'angle': face.pose
+                    }
+                    quality_faces.append(face_dict)
         
-        # 如果没有检测到任何目标，返回 None
-        if len(results[0].boxes) == 0:
-            return None
-            
-        # 获取所有检测到的目标的特征
-        features = []
-        for box in results[0].boxes:
-            # 获取目标的类别和置信度
-            cls = int(box.cls)
-            conf = float(box.conf)
-            
-            # 获取边界框坐标
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            
-            # 提取目标区域
-            roi = img[y1:y2, x1:x2]
-            if roi.size == 0:
-                continue
-                
-            # 调整大小为统一尺寸
-            roi = cv2.resize(roi, (224, 224))
-            
-            # 转换为特征向量（使用像素值的平均值作为简单特征）
-            feature = cv2.mean(roi)[:3]  # 只使用 RGB 通道
-            features.append(feature)
-        
-        if not features:
-            return None
-            
-        # 返回所有特征的平均值
-        return np.mean(features, axis=0)
-
-    def calculate_similarity(self, feature1: np.ndarray, feature2: np.ndarray) -> float:
-        """计算两个特征向量的相似度"""
-        if feature1 is None or feature2 is None:
-            return 0.0
-            
-        # 使用余弦相似度
-        similarity = np.dot(feature1, feature2) / (np.linalg.norm(feature1) * np.linalg.norm(feature2))
-        return float(similarity)
-
+        return quality_faces
+    
     def extract_face_features(self, image_path: str) -> Dict[str, Any]:
-        """使用 YOLOv8 提取人脸特征"""
+        """使用 RetinaFace 和 ArcFace 提取人脸特征"""
         try:
             # 读取图片
             image = cv2.imread(image_path)
             if image is None:
                 return None
                 
-            # 使用YOLOv8进行人脸检测
-            results = self.face_model(image)
-            
-            if len(results) == 0 or len(results[0].boxes) == 0:
-                return None
-                
-            faces = []
-            for box in results[0].boxes:
-                if len(faces) > 0:
-                    continue
-                # 获取人脸框坐标
-                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
-                
-                # 提取人脸区域
-                face = image[y1:y2, x1:x2]
-                
-                # 调整人脸大小为统一尺寸
-                face = cv2.resize(face, (112, 112))
-                
-                # 转换为RGB格式
-                face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
-                
-                # 归一化
-                face = face.astype(np.float32) / 255.0
-                
-                faces.append({
-                    'bbox': [x1, y1, x2, y2],
-                    'features': face.flatten(),
-                    'confidence': float(box.conf)
-                })
-            
+            faces = self.detect_faces(image)
+            if not faces:
+                print("没0人脸！")
+                return {'total_faces': 0, 'features': []}
+            print(f"{len(faces)}人脸！")
             return {
                 'faces': faces,
                 'total_faces': len(faces)
             }
-            
         except Exception as e:
             print(f"Error extracting face features: {str(e)}")
             return None
             
-    def calculate_face_similarity(self, features1: Dict[str, Any], features2: Dict[str, Any]) -> float:
+    def calculate_face_similarity(self, feature1: Dict, feature2: Dict) -> float:
         """计算两张图片中人脸的相似度"""
-        if not features1 or not features2:
+        if not feature1['features'] or not feature2['features']:
             return 0.0
             
+        # 获取所有人脸特征向量
+        faces1 = [np.array(face['embedding']) for face in feature1['features']]
+        faces2 = [np.array(face['embedding']) for face in feature2['features']]
+        
+        # 计算每对人脸之间的相似度
         max_similarity = 0.0
-        
-        # 比较每个人脸对的相似度
-        for face1 in features1['faces']:
-            for face2 in features2['faces']:
-                # 计算余弦相似度
-                similarity = np.dot(face1['features'], face2['features']) / (
-                    np.linalg.norm(face1['features']) * np.linalg.norm(face2['features'])
-                )
+        for face1 in faces1:
+            for face2 in faces2:
+                # 使用余弦相似度
+                similarity = np.dot(face1, face2) / (np.linalg.norm(face1) * np.linalg.norm(face2))
                 max_similarity = max(max_similarity, similarity)
-                
-        return max_similarity
         
-    def auto_group_images(self, image_ids: List[str], similarity_threshold: float = 0.55) -> List[Dict[str, Any]]:
-        """使用 YOLOv8 进行智能分组
+        return float(max_similarity)
+        
+    def auto_group_images(self, image_ids: List[str], similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
+        """使用 RetinaFace 和 ArcFace 进行智能分组
         Args:
             image_ids: 图片ID列表
             similarity_threshold: 相似度阈值，默认0.55
@@ -199,8 +133,11 @@ class ImageService:
         """
         # 存储每张图片的特征
         features_dict = {}
-        # 第一步：提取所有图片的人脸特征
-        for img_id in image_ids:
+        embeddings_list = []
+        image_map = []
+        
+        print("正在提取人脸特征...")
+        for img_id in tqdm(image_ids):
             if img_id in self.images:
                 image_name = self.images[img_id].filename
                 full_path = os.path.join(self.upload_dir, image_name)
@@ -212,63 +149,44 @@ class ImageService:
                 if features is not None and features['total_faces'] > 0:
                     features_dict[img_id] = features
         # 第二步：根据人脸特征相似度进行分组
-        groups = []
-        processed_images = set()
+        # 处理结果
+        face_count = 0
+        for img_path, feature1 in features_dict.items():
+            if feature1['faces']:
+                for face_dict in feature1['faces']:
+                    try:
+                        self.recognizer.add_face(face_dict, img_path)
+                        face_count += 1
+                    except Exception as e:
+                        print(f"添加人脸时出错 ({img_path}): {str(e)}")
         
-        for img_path1, feature1 in features_dict.items():
-            if img_path1 in processed_images:
-                continue
-                
-            current_group = {
-                'group_id': f"group_{len(groups)}",
-                'name': f"人脸分组 {len(groups) + 1}",
-                'image_ids': [img_path1],
-                'image_scores': [0],
-                'similarity_score': 1.0,
-                'face_count': feature1['total_faces']
-            }
-            processed_images.add(img_path1)
+        print(f"共处理 {len(image_ids)} 张图片，"
+            f"检测到 {face_count} 个人脸")
+        
+        # 构建索引并聚类
+        if len(self.recognizer.face_features) > 0:
+            print("开始构建索引...")
+            self.recognizer.build_index()
             
-            # 比较与其他图片的相似度
-            for img_path2, feature2 in features_dict.items():
-                if img_path2 in processed_images:
-                    continue
-                    
-                # 计算人脸相似度
-                similarity = self.calculate_face_similarity(feature1, feature2)
-                
-                # 如果相似度超过阈值，将图片添加到当前分组
-                if similarity >= similarity_threshold:
-                    current_group['image_ids'].append(img_path2)
-                    current_group['image_scores'].append(similarity)
-                    current_group['similarity_score'] = min(
-                        current_group['similarity_score'],
-                        similarity
-                    )
-                    current_group['face_count'] = max(
-                        current_group['face_count'],
-                        feature2['total_faces']
-                    )
-                    processed_images.add(img_path2)
-                    
-            if len(current_group['image_ids']) > 1:
-                groups.append(current_group)
-                
-        # 第三步：处理未分组的图片
-        ungrouped_images = [
-            img_path for img_path in image_ids
-            if img_path not in processed_images
-        ]
-        if ungrouped_images:
-            groups.append({
-                'group_id': f"group_{len(groups)}",
-                'name': "其他图片",
-                'image_ids': ungrouped_images,
-                'similarity_score': 0.0,
-                'face_count': 0
-            })  
-        return groups
-
+            print("开始聚类分析...")
+            groups = self.recognizer.cluster_faces(threshold=similarity_threshold)
+            print(f"聚类完成，找到 {len(groups)} 个分组")
+            
+            # 格式化输出结果
+            result = []
+            for group_data in groups:
+                # avg_quality = np.mean(group_data['quality_scores'])
+                if len(group_data['image_ids']) > 0:
+                    result.append({
+                        'group_id': str(group_data['group_id']),
+                        'name': f"人物_{group_data['group_id']}",
+                        'image_ids': list(set(group_data['image_ids'])),
+                        # 'quality_score': float(avg_quality)
+                    })
+            return result
+        else:
+            print("没有检测到任何有效的人脸！")
+            return []
 
     async def save_images(self, files: List[UploadFile]) -> List[str]:
         """保存上传的图片文件"""
@@ -374,3 +292,10 @@ class ImageService:
         except Exception as e:
             print(f"Error deleting group: {str(e)}")
             raise 
+
+    def reset(self):
+        """重置服务状态，清除所有图片和分组信息"""
+        self.images.clear()
+        self.groups.clear()
+        # 重置人脸识别器的状态
+        self.recognizer = FaceRecognizer() 

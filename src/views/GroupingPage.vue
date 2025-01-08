@@ -184,7 +184,7 @@
                 ></i>
               </button>
             </div>
-            <div class="size-control">
+            <div class="size-control hidden">
               <button class="btn-icon" @click="decreaseImageSize" :disabled="imageSize <= 100">
                 <i class="fas fa-search-minus"></i>
               </button>
@@ -193,7 +193,7 @@
                 <i class="fas fa-search-plus"></i>
               </button>
             </div>
-            <div class="view-mode-switch">
+            <div class="view-mode-switch hidden">
               <button
                 v-for="mode in viewModes"
                 :key="mode.value"
@@ -808,7 +808,7 @@
     </div>-->
 
     <!-- 分组列表 -->
-    <div class="group-list">
+    <div class="group-list hidden">
       <div v-if="sortedGroups.length > 0" class="group-grid">
         <div v-for="group in sortedGroups" :key="group.id" class="group-item">
           <h3>{{ group.name || '未命名分组' }}</h3>
@@ -1584,11 +1584,11 @@ const startAutoGrouping = async () => {
       }
 
       // 保存分组
-      await groupStore.createGroup(group)
+      const currentGroup = await groupStore.createGroup(group)
 
       // 移动图片到分组
-      await imageStore.moveImagesToGroup(result.image_ids, group.id)
-
+      await imageStore.moveImagesToGroup(result.image_ids, currentGroup.id)
+      console.log('Moved ', result.image_ids.length, 'images to group', currentGroup.id)
       groupingStatus.value.processedImages += result.image_ids.length
       groupingStatus.value.currentProgress =
         (groupingStatus.value.processedImages / groupingStatus.value.totalImages) * 100
@@ -2083,9 +2083,71 @@ const sortedGroups = computed(() => {
     return nameA.localeCompare(nameB)
   })
 })
+
+// const handleAutoGroup = async () => {
+//   try {
+//     loading.value = true
+//     console.log('Starting auto grouping for images:', selectedImages.value)
+
+//     // 调用后端分组API
+//     const response = await apiStore.groupImages(selectedImages.value)
+//     console.log('Auto grouping response:', response)
+
+//     // 使用分组结果创建分组
+//     await groupStore.createGroupsFromResults(response.data)
+
+//     // 更新图片的分组信息
+//     await imageStore.autoGroupImages(response.data)
+
+//     // 刷新分组列表
+//     groups.value = groupStore.groups
+
+//     ElMessage.success('自动分组完成')
+//   } catch (error) {
+//     console.error('Auto grouping error:', error)
+//     ElMessage.error('自动分组失败：' + error.message)
+//   } finally {
+//     loading.value = false
+//   }
+// }
 </script>
 
 <style scoped>
+/********** 内容高度设置 **********/
+/* .main-content {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 2rem;
+  height: calc(100vh - 80px); /* 减去header高度 */
+/* overflow: hidden; 防止出现双滚动条 */
+/* } */
+/*
+.group-sidebar {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+} */
+
+/* .group-list {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem; /* 为滚动条预留空间 */
+/* } */
+
+/*.image-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+} */
+/*
+.image-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+} */
+/********** 内容高度设置 **********/
 .grouping-container {
   height: 100vh;
   display: flex;
@@ -2169,9 +2231,10 @@ const sortedGroups = computed(() => {
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  grid-auto-rows: min-content; /* 让每行高度自适应内容 */
+  grid-auto-rows: min-content;
 }
 
+/* 让每行高度自适应内容 */
 .image-item {
   position: relative;
   background: white;
@@ -8639,12 +8702,2266 @@ const sortedGroups = computed(() => {
 
 .image-list .image-wrapper {
   position: relative;
+  width: 100%;
+  padding-bottom: 75%; /* 4:3 的宽高比 */
+  overflow: hidden;
+  background: var(--background-color);
+}
 
+.image-list .image-wrapper img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* 改为 contain 以显示完整图片 */
+  background: var(--background-color);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-list .image-wrapper img.loaded {
+  opacity: 1;
+}
+
+.image-list .image-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.75rem;
+  opacity: 0;
+  transform: translateZ(0); /* 启用GPU加 */
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+
+.image-list .image-item:hover .image-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-list .image-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  transform: translateZ(0); /* 启用GPU加速 */
+}
+
+.image-list .btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateZ(0); /* 启用GPU加速 */
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: background-color;
+}
+
+.image-list .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.image-list .btn-icon.danger:hover {
+  background: var(--error-color);
+}
+
+.image-list .image-info {
+  padding: 0.75rem;
+  background: white;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+}
+
+.image-list .image-name {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.image-list .image-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.image-list .image-size {
+  opacity: 0.8;
+}
+
+.image-list .image-group {
+  color: var(--primary-color);
+}
+
+/* 右键菜单 */
+.image-list .context-menu {
+  position: fixed;
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem;
+  min-width: 160px;
+  z-index: 1000;
+}
+
+.image-list .context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+}
+
+.image-list .context-menu .menu-item:hover {
+  background: var(--background-color);
+}
+
+.image-list .context-menu .menu-item i {
+  width: 16px;
+  opacity: 0.8;
+}
+
+.image-list .context-menu .text-danger:hover {
+  background: rgba(255, 71, 87, 0.1);
+}
+
+/* 尺寸控制 */
+.image-list .size-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 1rem;
+  padding: 0 1rem;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.image-list .size-value {
+  min-width: 3em;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* 过滤器组 */
+.image-list .filter-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.image-list .btn-text {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius);
+}
+
+.image-list .btn-text:hover {
+  background: var(--background-hover);
+}
+
+.image-list .btn-text.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.image-list .image-item.selected {
+  outline: 2px solid var(--primary-color);
+}
+
+.image-list .selection-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: white;
+}
+
+.image-list .empty-state {
+  grid-column: 1 / -1;
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.image-list .empty-state i {
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.image-list .dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.image-list .dialog {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.image-list .dialog h3 {
+  margin: 0;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.image-list .dialog-content {
+  padding: 1rem;
+}
+
+.image-list .dialog-footer {
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.image-list .dialog-content .form-group {
+  margin-bottom: 1rem;
+}
+
+.image-list .dialog-content .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.image-list .dialog-content .form-group input[type='text'],
+.image-list .dialog-content .form-group textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
   background: var(--background-color);
 }
 
 .image-list .dialog-content .form-group textarea {
   resize: vertical;
   min-height: 80px;
+}
+
+.image-list .image-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 75%; /* 4:3 的宽高比 */
+  overflow: hidden;
+  background: var(--background-color);
+}
+
+.image-list .image-wrapper img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* 改为 contain 以显示完整图片 */
+  background: var(--background-color);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-list .image-wrapper img.loaded {
+  opacity: 1;
+}
+
+.image-list .image-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.75rem;
+  opacity: 0;
+  transform: translateZ(0); /* 启用GPU加 */
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+
+.image-list .image-item:hover .image-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-list .image-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  transform: translateZ(0); /* 启用GPU加速 */
+}
+
+.image-list .btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateZ(0); /* 启用GPU加速 */
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: background-color;
+}
+
+.image-list .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.image-list .btn-icon.danger:hover {
+  background: var(--error-color);
+}
+
+.image-list .image-info {
+  padding: 0.75rem;
+  background: white;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+}
+
+.image-list .image-name {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.image-list .image-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.image-list .image-size {
+  opacity: 0.8;
+}
+
+.image-list .image-group {
+  color: var(--primary-color);
+}
+
+/* 右键菜单 */
+.image-list .context-menu {
+  position: fixed;
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem;
+  min-width: 160px;
+  z-index: 1000;
+}
+
+.image-list .context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+}
+
+.image-list .context-menu .menu-item:hover {
+  background: var(--background-color);
+}
+
+.image-list .context-menu .menu-item i {
+  width: 16px;
+  opacity: 0.8;
+}
+
+.image-list .context-menu .text-danger:hover {
+  background: rgba(255, 71, 87, 0.1);
+}
+
+/* 尺寸控制 */
+.image-list .size-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 1rem;
+  padding: 0 1rem;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.image-list .size-value {
+  min-width: 3em;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* 过滤器组 */
+.image-list .filter-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.image-list .btn-text {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius);
+}
+
+.image-list .btn-text:hover {
+  background: var(--background-hover);
+}
+
+.image-list .btn-text.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.image-list .image-item.selected {
+  outline: 2px solid var(--primary-color);
+}
+
+.image-list .selection-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: white;
+}
+
+.image-list .empty-state {
+  grid-column: 1 / -1;
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.image-list .empty-state i {
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.image-list .dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.image-list .dialog {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.image-list .dialog h3 {
+  margin: 0;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.image-list .dialog-content {
+  padding: 1rem;
+}
+
+.image-list .dialog-footer {
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.image-list .dialog-content .form-group {
+  margin-bottom: 1rem;
+}
+
+.image-list .dialog-content .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.image-list .dialog-content .form-group input[type='text'],
+.image-list .dialog-content .form-group textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--background-color);
+}
+
+.image-list .dialog-content .form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.image-list .image-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 75%; /* 4:3 的宽高比 */
+  overflow: hidden;
+  background: var(--background-color);
+}
+
+.image-list .image-wrapper img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* 改为 contain 以显示完整图片 */
+  background: var(--background-color);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-list .image-wrapper img.loaded {
+  opacity: 1;
+}
+
+.image-list .image-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.75rem;
+  opacity: 0;
+  transform: translateZ(0); /* 启用GPU加 */
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+
+.image-list .image-item:hover .image-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-list .image-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  transform: translateZ(0); /* 启用GPU加速 */
+}
+
+.image-list .btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateZ(0); /* 启用GPU加速 */
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: background-color;
+}
+
+.image-list .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.image-list .btn-icon.danger:hover {
+  background: var(--error-color);
+}
+
+.image-list .image-info {
+  padding: 0.75rem;
+  background: white;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+}
+
+.image-list .image-name {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.image-list .image-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.image-list .image-size {
+  opacity: 0.8;
+}
+
+.image-list .image-group {
+  color: var(--primary-color);
+}
+
+/* 右键菜单 */
+.image-list .context-menu {
+  position: fixed;
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem;
+  min-width: 160px;
+  z-index: 1000;
+}
+
+.image-list .context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+}
+
+.image-list .context-menu .menu-item:hover {
+  background: var(--background-color);
+}
+
+.image-list .context-menu .menu-item i {
+  width: 16px;
+  opacity: 0.8;
+}
+
+.image-list .context-menu .text-danger:hover {
+  background: rgba(255, 71, 87, 0.1);
+}
+
+/* 尺寸控制 */
+.image-list .size-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 1rem;
+  padding: 0 1rem;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.image-list .size-value {
+  min-width: 3em;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* 过滤器组 */
+.image-list .filter-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.image-list .btn-text {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius);
+}
+
+.image-list .btn-text:hover {
+  background: var(--background-hover);
+}
+
+.image-list .btn-text.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.image-list .image-item.selected {
+  outline: 2px solid var(--primary-color);
+}
+
+.image-list .selection-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: white;
+}
+
+.image-list .empty-state {
+  grid-column: 1 / -1;
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.image-list .empty-state i {
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.image-list .dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.image-list .dialog {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.image-list .dialog h3 {
+  margin: 0;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.image-list .dialog-content {
+  padding: 1rem;
+}
+
+.image-list .dialog-footer {
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.image-list .dialog-content .form-group {
+  margin-bottom: 1rem;
+}
+
+.image-list .dialog-content .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.image-list .dialog-content .form-group input[type='text'],
+.image-list .dialog-content .form-group textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--background-color);
+}
+
+.image-list .dialog-content .form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.image-list .image-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 75%; /* 4:3 的宽高比 */
+  overflow: hidden;
+  background: var(--background-color);
+}
+
+.image-list .image-wrapper img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* 改为 contain 以显示完整图片 */
+  background: var(--background-color);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-list .image-wrapper img.loaded {
+  opacity: 1;
+}
+
+.image-list .image-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.75rem;
+  opacity: 0;
+  transform: translateZ(0); /* 启用GPU加 */
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+
+.image-list .image-item:hover .image-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-list .image-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  transform: translateZ(0); /* 启用GPU加速 */
+}
+
+.image-list .btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateZ(0); /* 启用GPU加速 */
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: background-color;
+}
+
+.image-list .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.image-list .btn-icon.danger:hover {
+  background: var(--error-color);
+}
+
+.image-list .image-info {
+  padding: 0.75rem;
+  background: white;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+}
+
+.image-list .image-name {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.image-list .image-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.image-list .image-size {
+  opacity: 0.8;
+}
+
+.image-list .image-group {
+  color: var(--primary-color);
+}
+
+/* 右键菜单 */
+.image-list .context-menu {
+  position: fixed;
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem;
+  min-width: 160px;
+  z-index: 1000;
+}
+
+.image-list .context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+}
+
+.image-list .context-menu .menu-item:hover {
+  background: var(--background-color);
+}
+
+.image-list .context-menu .menu-item i {
+  width: 16px;
+  opacity: 0.8;
+}
+
+.image-list .context-menu .text-danger:hover {
+  background: rgba(255, 71, 87, 0.1);
+}
+
+/* 尺寸控制 */
+.image-list .size-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 1rem;
+  padding: 0 1rem;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.image-list .size-value {
+  min-width: 3em;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* 过滤器组 */
+.image-list .filter-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.image-list .btn-text {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius);
+}
+
+.image-list .btn-text:hover {
+  background: var(--background-hover);
+}
+
+.image-list .btn-text.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.image-list .image-item.selected {
+  outline: 2px solid var(--primary-color);
+}
+
+.image-list .selection-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: white;
+}
+
+.image-list .empty-state {
+  grid-column: 1 / -1;
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.image-list .empty-state i {
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.image-list .dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.image-list .dialog {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.image-list .dialog h3 {
+  margin: 0;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.image-list .dialog-content {
+  padding: 1rem;
+}
+
+.image-list .dialog-footer {
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.image-list .dialog-content .form-group {
+  margin-bottom: 1rem;
+}
+
+.image-list .dialog-content .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.image-list .dialog-content .form-group input[type='text'],
+.image-list .dialog-content .form-group textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--background-color);
+}
+
+.image-list .dialog-content .form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.image-list .image-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 75%; /* 4:3 的宽高比 */
+  overflow: hidden;
+  background: var(--background-color);
+}
+
+.image-list .image-wrapper img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* 改为 contain 以显示完整图片 */
+  background: var(--background-color);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-list .image-wrapper img.loaded {
+  opacity: 1;
+}
+
+.image-list .image-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.75rem;
+  opacity: 0;
+  transform: translateZ(0); /* 启用GPU加 */
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+
+.image-list .image-item:hover .image-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-list .image-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  transform: translateZ(0); /* 启用GPU加速 */
+}
+
+.image-list .btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateZ(0); /* 启用GPU加速 */
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: background-color;
+}
+
+.image-list .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.image-list .btn-icon.danger:hover {
+  background: var(--error-color);
+}
+
+.image-list .image-info {
+  padding: 0.75rem;
+  background: white;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+}
+
+.image-list .image-name {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.image-list .image-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.image-list .image-size {
+  opacity: 0.8;
+}
+
+.image-list .image-group {
+  color: var(--primary-color);
+}
+
+/* 右键菜单 */
+.image-list .context-menu {
+  position: fixed;
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem;
+  min-width: 160px;
+  z-index: 1000;
+}
+
+.image-list .context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+}
+
+.image-list .context-menu .menu-item:hover {
+  background: var(--background-color);
+}
+
+.image-list .context-menu .menu-item i {
+  width: 16px;
+  opacity: 0.8;
+}
+
+.image-list .context-menu .text-danger:hover {
+  background: rgba(255, 71, 87, 0.1);
+}
+
+/* 尺寸控制 */
+.image-list .size-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 1rem;
+  padding: 0 1rem;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.image-list .size-value {
+  min-width: 3em;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* 过滤器组 */
+.image-list .filter-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.image-list .btn-text {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius);
+}
+
+.image-list .btn-text:hover {
+  background: var(--background-hover);
+}
+
+.image-list .btn-text.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.image-list .image-item.selected {
+  outline: 2px solid var(--primary-color);
+}
+
+.image-list .selection-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: white;
+}
+
+.image-list .empty-state {
+  grid-column: 1 / -1;
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.image-list .empty-state i {
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.image-list .dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.image-list .dialog {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.image-list .dialog h3 {
+  margin: 0;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.image-list .dialog-content {
+  padding: 1rem;
+}
+
+.image-list .dialog-footer {
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.image-list .dialog-content .form-group {
+  margin-bottom: 1rem;
+}
+
+.image-list .dialog-content .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.image-list .dialog-content .form-group input[type='text'],
+.image-list .dialog-content .form-group textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--background-color);
+}
+
+.image-list .dialog-content .form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.image-list .image-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 75%; /* 4:3 的宽高比 */
+  overflow: hidden;
+  background: var(--background-color);
+}
+
+.image-list .image-wrapper img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* 改为 contain 以显示完整图片 */
+  background: var(--background-color);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-list .image-wrapper img.loaded {
+  opacity: 1;
+}
+
+.image-list .image-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.75rem;
+  opacity: 0;
+  transform: translateZ(0); /* 启用GPU加 */
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+
+.image-list .image-item:hover .image-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-list .image-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  transform: translateZ(0); /* 启用GPU加速 */
+}
+
+.image-list .btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateZ(0); /* 启用GPU加速 */
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: background-color;
+}
+
+.image-list .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.image-list .btn-icon.danger:hover {
+  background: var(--error-color);
+}
+
+.image-list .image-info {
+  padding: 0.75rem;
+  background: white;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+}
+
+.image-list .image-name {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.image-list .image-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.image-list .image-size {
+  opacity: 0.8;
+}
+
+.image-list .image-group {
+  color: var(--primary-color);
+}
+
+/* 右键菜单 */
+.image-list .context-menu {
+  position: fixed;
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem;
+  min-width: 160px;
+  z-index: 1000;
+}
+
+.image-list .context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+}
+
+.image-list .context-menu .menu-item:hover {
+  background: var(--background-color);
+}
+
+.image-list .context-menu .menu-item i {
+  width: 16px;
+  opacity: 0.8;
+}
+
+.image-list .context-menu .text-danger:hover {
+  background: rgba(255, 71, 87, 0.1);
+}
+
+/* 尺寸控制 */
+.image-list .size-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 1rem;
+  padding: 0 1rem;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.image-list .size-value {
+  min-width: 3em;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* 过滤器组 */
+.image-list .filter-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.image-list .btn-text {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius);
+}
+
+.image-list .btn-text:hover {
+  background: var(--background-hover);
+}
+
+.image-list .btn-text.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.image-list .image-item.selected {
+  outline: 2px solid var(--primary-color);
+}
+
+.image-list .selection-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: white;
+}
+
+.image-list .empty-state {
+  grid-column: 1 / -1;
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.image-list .empty-state i {
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.image-list .dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.image-list .dialog {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.image-list .dialog h3 {
+  margin: 0;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.image-list .dialog-content {
+  padding: 1rem;
+}
+
+.image-list .dialog-footer {
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.image-list .dialog-content .form-group {
+  margin-bottom: 1rem;
+}
+
+.image-list .dialog-content .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.image-list .dialog-content .form-group input[type='text'],
+.image-list .dialog-content .form-group textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--background-color);
+}
+
+.image-list .dialog-content .form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.image-list .image-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 75%; /* 4:3 的宽高比 */
+  overflow: hidden;
+  background: var(--background-color);
+}
+
+.image-list .image-wrapper img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* 改为 contain 以显示完整图片 */
+  background: var(--background-color);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-list .image-wrapper img.loaded {
+  opacity: 1;
+}
+
+.image-list .image-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.75rem;
+  opacity: 0;
+  transform: translateZ(0); /* 启用GPU加 */
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+
+.image-list .image-item:hover .image-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-list .image-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  transform: translateZ(0); /* 启用GPU加速 */
+}
+
+.image-list .btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateZ(0); /* 启用GPU加速 */
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: background-color;
+}
+
+.image-list .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.image-list .btn-icon.danger:hover {
+  background: var(--error-color);
+}
+
+.image-list .image-info {
+  padding: 0.75rem;
+  background: white;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+}
+
+.image-list .image-name {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.image-list .image-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.image-list .image-size {
+  opacity: 0.8;
+}
+
+.image-list .image-group {
+  color: var(--primary-color);
+}
+
+/* 右键菜单 */
+.image-list .context-menu {
+  position: fixed;
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem;
+  min-width: 160px;
+  z-index: 1000;
+}
+
+.image-list .context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+}
+
+.image-list .context-menu .menu-item:hover {
+  background: var(--background-color);
+}
+
+.image-list .context-menu .menu-item i {
+  width: 16px;
+  opacity: 0.8;
+}
+
+.image-list .context-menu .text-danger:hover {
+  background: rgba(255, 71, 87, 0.1);
+}
+
+/* 尺寸控制 */
+.image-list .size-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 1rem;
+  padding: 0 1rem;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.image-list .size-value {
+  min-width: 3em;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* 过滤器组 */
+.image-list .filter-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.image-list .btn-text {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius);
+}
+
+.image-list .btn-text:hover {
+  background: var(--background-hover);
+}
+
+.image-list .btn-text.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.image-list .image-item.selected {
+  outline: 2px solid var(--primary-color);
+}
+
+.image-list .selection-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: white;
+}
+
+.image-list .empty-state {
+  grid-column: 1 / -1;
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.image-list .empty-state i {
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.image-list .dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.image-list .dialog {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.image-list .dialog h3 {
+  margin: 0;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.image-list .dialog-content {
+  padding: 1rem;
+}
+
+.image-list .dialog-footer {
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.image-list .dialog-content .form-group {
+  margin-bottom: 1rem;
+}
+
+.image-list .dialog-content .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.image-list .dialog-content .form-group input[type='text'],
+.image-list .dialog-content .form-group textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--background-color);
+}
+
+.image-list .dialog-content .form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.image-list .image-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 75%; /* 4:3 的宽高比 */
+  overflow: hidden;
+  background: var(--background-color);
+}
+
+.image-list .image-wrapper img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* 改为 contain 以显示完整图片 */
+  background: var(--background-color);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-list .image-wrapper img.loaded {
+  opacity: 1;
+}
+
+.image-list .image-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.75rem;
+  opacity: 0;
+  transform: translateZ(0); /* 启用GPU加 */
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+
+.image-list .image-item:hover .image-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-list .image-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  transform: translateZ(0); /* 启用GPU加速 */
+}
+
+.image-list .btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateZ(0); /* 启用GPU加速 */
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: background-color;
+}
+
+.image-list .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.image-list .btn-icon.danger:hover {
+  background: var(--error-color);
+}
+
+.image-list .image-info {
+  padding: 0.75rem;
+  background: white;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+}
+
+.image-list .image-name {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.image-list .image-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.image-list .image-size {
+  opacity: 0.8;
+}
+
+.image-list .image-group {
+  color: var(--primary-color);
+}
+
+/* 右键菜单 */
+.image-list .context-menu {
+  position: fixed;
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem;
+  min-width: 160px;
+  z-index: 1000;
+}
+
+.image-list .context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+}
+
+.image-list .context-menu .menu-item:hover {
+  background: var(--background-color);
+}
+
+.image-list .context-menu .menu-item i {
+  width: 16px;
+  opacity: 0.8;
+}
+
+.image-list .context-menu .text-danger:hover {
+  background: rgba(255, 71, 87, 0.1);
+}
+
+/* 尺寸控制 */
+.image-list .size-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 1rem;
+  padding: 0 1rem;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.image-list .size-value {
+  min-width: 3em;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* 过滤器组 */
+.image-list .filter-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.image-list .btn-text {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius);
+}
+
+.image-list .btn-text:hover {
+  background: var(--background-hover);
+}
+
+.image-list .btn-text.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.image-list .image-item.selected {
+  outline: 2px solid var(--primary-color);
+}
+
+.image-list .selection-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: white;
+}
+
+.image-list .empty-state {
+  grid-column: 1 / -1;
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.image-list .empty-state i {
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.image-list .dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.image-list .dialog {
+  background: white;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.image-list .dialog h3 {
+  margin: 0;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.image-list .dialog-content {
+  padding: 1rem;
+}
+
+.image-list .dialog-footer {
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.image-list .dialog-content .form-group {
+  margin-bottom: 1rem;
+}
+
+.image-list .dialog-content .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.image-list .dialog-content .form-group input[type='text'],
+.image-list .dialog-content .form-group textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--background-color);
+}
+
+.image-list .dialog-content .form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.image-list .image-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 75%; /* 4:3 的宽高比 */
+  overflow: hidden;
+  background: var(--background-color);
+}
+
+.image-list .image-wrapper img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* 改为 contain 以显示完整图片 */
+  background: var(--background-color);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-list .image-wrapper img.loaded {
+  opacity: 1;
+}
+
+.image-list .image-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.75rem;
+  opacity: 0;
+  transform: translateZ(0); /* 启用GPU加 */
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+
+.image-list .image-item:hover .image-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.image-list .image-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  transform: translateZ(0); /* 启用GPU加速 */
+}
+
+.image-list .btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateZ(0); /* 启用GPU加速 */
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: background-color;
+}
+
+.image-list .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.image-list .btn-icon.danger:hover {
+  background: var(--error-color);
+}
+
+.image-list .image-info {
+  padding: 0.75rem;
+  background: white;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+}
+
+.image-list .image-name {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
 }
 </style>
